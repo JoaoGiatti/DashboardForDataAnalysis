@@ -1,12 +1,14 @@
 """
 =============================================================
-  Pipeline de Ciência de Dados — Spotify Tracks
-  Datasets: thedevastator/spotify-tracks-genre-dataset
-            maharshipandya/-spotify-tracks-dataset
+  Pipeline de Ciência de Dados — Spotify
+  Dataset 1: maharshipandya/-spotify-tracks-dataset
+             (características de áudio das faixas)
+  Dataset 2: dhruvildave/spotify-charts
+             (performance nos charts globais)
 =============================================================
 Etapas:
   1. Aquisição via Kaggle API
-  2. Integração (merge + consolidação)
+  2. Integração (merge por título + artista)
   3. Limpeza e tratamento
   4. Transformação e novas variáveis
   5. Análise exploratória + insights
@@ -33,32 +35,33 @@ print("=" * 60)
 os.makedirs("dados/dataset1", exist_ok=True)
 os.makedirs("dados/dataset2", exist_ok=True)
 
-print("Baixando Dataset 1 (Genre Dataset)...")
+print("Baixando Dataset 1 (Spotify Tracks — features de áudio)...")
 kaggle.api.dataset_download_files(
-    "thedevastator/spotify-tracks-genre-dataset",
+    "maharshipandya/-spotify-tracks-dataset",
     path="dados/dataset1", unzip=True
 )
 
-print("Baixando Dataset 2 (Tracks Dataset)...")
+print("Baixando Dataset 2 (Spotify Charts — performance global)...")
 kaggle.api.dataset_download_files(
-    "maharshipandya/-spotify-tracks-dataset",
+    "dhruvildave/spotify-charts",
     path="dados/dataset2", unzip=True
 )
 
 def ler_csvs(pasta, label):
     arquivos = [f for f in os.listdir(pasta) if f.endswith(".csv")]
     dfs = []
-    for arq in arquivos:
-        df = pd.read_csv(os.path.join(pasta, arq))
+    for arq in sorted(arquivos):
+        df = pd.read_csv(os.path.join(pasta, arq), low_memory=False)
         df["arquivo_origem"] = arq
         print(f"  {label} / {arq}: {len(df):,} registros | {df.shape[1]} colunas")
         dfs.append(df)
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-df1 = ler_csvs("dados/dataset1", "DS1")
-df2 = ler_csvs("dados/dataset2", "DS2")
+df_tracks = ler_csvs("dados/dataset1", "DS1-Tracks")
+df_charts = ler_csvs("dados/dataset2", "DS2-Charts")
 
-print(f"\nTotal DS1: {len(df1):,} | Total DS2: {len(df2):,}")
+print(f"\nTotal Tracks : {len(df_tracks):,} registros")
+print(f"Total Charts : {len(df_charts):,} registros")
 
 # ─────────────────────────────────────────────────────────
 # 2. INTEGRAÇÃO DE DADOS
@@ -67,34 +70,58 @@ print("\n" + "=" * 60)
 print("ETAPA 2 — Integração de dados")
 print("=" * 60)
 
-df1.columns = df1.columns.str.strip().str.lower().str.replace(" ", "_")
-df2.columns = df2.columns.str.strip().str.lower().str.replace(" ", "_")
+# Normaliza nomes de colunas
+df_tracks.columns = df_tracks.columns.str.strip().str.lower().str.replace(" ", "_")
+df_charts.columns = df_charts.columns.str.strip().str.lower().str.replace(" ", "_")
 
-if "track_id" in df1.columns and "track_id" in df2.columns:
-    print("Merge por track_id (outer)...")
-    df = pd.merge(df1, df2, on="track_id", how="outer", suffixes=("_ds1", "_ds2"))
-    print(f"Após merge: {len(df):,} registros | {df.shape[1]} colunas")
+print("Colunas Tracks :", df_tracks.columns.tolist())
+print("Colunas Charts :", df_charts.columns.tolist())
 
-    # Consolida colunas duplicadas (_ds1 / _ds2)
-    colunas_base = list(dict.fromkeys(
-        c.replace("_ds1", "").replace("_ds2", "")
-        for c in df.columns if "_ds1" in c or "_ds2" in c
-    ))
-    for col in colunas_base:
-        c1, c2 = f"{col}_ds1", f"{col}_ds2"
-        if c1 in df.columns and c2 in df.columns:
-            df[col] = df[c1].combine_first(df[c2])
-            df.drop(columns=[c1, c2], inplace=True)
-        elif c1 in df.columns:
-            df.rename(columns={c1: col}, inplace=True)
-        elif c2 in df.columns:
-            df.rename(columns={c2: col}, inplace=True)
-    print("Colunas consolidadas com sucesso.")
-else:
-    df1["fonte"] = "genre_dataset"
-    df2["fonte"] = "tracks_dataset"
-    df = pd.concat([df1, df2], ignore_index=True)
-    print(f"Concat realizado: {len(df):,} registros")
+# ── Prepara chave de merge ────────────────────────────────
+# Tracks: track_name + artists
+# Charts: title + artist
+def normalizar_texto(serie):
+    return (serie
+            .astype(str)
+            .str.lower()
+            .str.strip()
+            .str.replace(r"[^\w\s]", "", regex=True)
+            .str.replace(r"\s+", " ", regex=True))
+
+df_tracks["_chave"] = normalizar_texto(df_tracks["track_name"])
+df_charts["_chave"] = normalizar_texto(df_charts["title"])
+
+# Agrega charts por música: streams totais, melhor posição, países, datas
+print("Agregando charts por música...")
+charts_agg = df_charts.groupby("_chave").agg(
+    streams_total   = ("streams",  "sum"),
+    streams_media   = ("streams",  "mean"),
+    melhor_posicao  = ("rank",     "min"),
+    aparicoes_chart = ("rank",     "count"),
+    paises_chart    = ("region",   "nunique"),
+    primeira_data   = ("date",     "min"),
+    ultima_data     = ("date",     "max"),
+).reset_index()
+
+# Top200 vs Viral50 (se existir coluna chart)
+if "chart" in df_charts.columns:
+    charts_tipo = df_charts.groupby(["_chave", "chart"]).size().unstack(fill_value=0).reset_index()
+    charts_tipo.columns = ["_chave"] + [f"chart_{c}" for c in charts_tipo.columns[1:]]
+    charts_agg = charts_agg.merge(charts_tipo, on="_chave", how="left")
+
+print(f"Músicas únicas nos charts: {len(charts_agg):,}")
+
+# Merge tracks + charts agregado
+df = df_tracks.merge(charts_agg, on="_chave", how="left")
+print(f"Após merge: {len(df):,} registros")
+
+# Flag: música chegou ou não aos charts
+df["chegou_ao_chart"] = df["streams_total"].notna()
+pct_charted = df["chegou_ao_chart"].mean() * 100
+print(f"Músicas que chegaram aos charts: {pct_charted:.1f}%")
+
+# Remove colunas auxiliares
+df.drop(columns=["_chave", "arquivo_origem"], inplace=True, errors="ignore")
 
 # ─────────────────────────────────────────────────────────
 # 3. LIMPEZA E TRATAMENTO
@@ -104,22 +131,22 @@ print("ETAPA 3 — Limpeza e tratamento")
 print("=" * 60)
 
 # Remove colunas inúteis
-colunas_remover = [c for c in df.columns if c.startswith("unnamed") or c == "arquivo_origem"]
+colunas_remover = [c for c in df.columns if c.startswith("unnamed")]
 df.drop(columns=colunas_remover, inplace=True, errors="ignore")
-print(f"Colunas removidas: {colunas_remover}")
 
-# Nulos
+# Nulos numéricos — mediana
 for col in df.select_dtypes(include=[np.number]).columns:
     if df[col].isnull().sum() > 0:
         df[col].fillna(df[col].median(), inplace=True)
 
+# Nulos texto
 for col in df.select_dtypes(include=["object"]).columns:
     if df[col].isnull().sum() > 0:
         df[col].fillna("Desconhecido", inplace=True)
 
 # Duplicatas
 antes = len(df)
-df.drop_duplicates(inplace=True)
+df.drop_duplicates(subset=["track_id"], inplace=True)
 print(f"Duplicatas removidas: {antes - len(df):,}")
 
 # Consistência
@@ -131,16 +158,17 @@ if "popularity" in df.columns:
 print(f"Dataset limpo: {len(df):,} registros")
 
 # ─────────────────────────────────────────────────────────
-# 4. TRANSFORMAÇÃO + TRADUÇÃO
+# 4. TRANSFORMAÇÃO E NOVAS VARIÁVEIS
 # ─────────────────────────────────────────────────────────
 print("\n" + "=" * 60)
-print("ETAPA 4 — Transformação e tradução")
+print("ETAPA 4 — Transformação e novas variáveis")
 print("=" * 60)
 
-# Novas variáveis
+# Duração em minutos
 if "duration_ms" in df.columns:
     df["duration_min"] = (df["duration_ms"] / 60000).round(2)
 
+# Faixa de popularidade
 if "popularity" in df.columns:
     df["faixa_popularidade"] = pd.cut(
         df["popularity"],
@@ -149,9 +177,7 @@ if "popularity" in df.columns:
         include_lowest=True
     )
 
-if "danceability" in df.columns and "energy" in df.columns:
-    df["score_danca_energia"] = (df["danceability"] * df["energy"]).round(4)
-
+# Humor pela valência
 if "valence" in df.columns:
     df["humor"] = pd.cut(
         df["valence"],
@@ -160,30 +186,34 @@ if "valence" in df.columns:
         include_lowest=True
     )
 
-# Coluna de ano (se existir data)
-col_data = next((c for c in ["track_album_release_date", "release_year", "year"] if c in df.columns), None)
-if col_data:
-    df["ano_lancamento"] = pd.to_datetime(df[col_data], errors="coerce").dt.year
-    df["decada"] = (df["ano_lancamento"] // 10 * 10).astype("Int64").astype(str) + "s"
+# Faixa de streams
+if "streams_total" in df.columns:
+    df["streams_total"] = pd.to_numeric(df["streams_total"], errors="coerce").fillna(0)
+    df["faixa_streams"] = pd.cut(
+        df["streams_total"],
+        bins=[-1, 0, 1e7, 1e8, 1e9, float("inf")],
+        labels=["Sem chart", "< 10M", "10M–100M", "100M–1B", "> 1B"]
+    )
 
-# Z-score das features de áudio
-features_audio = [c for c in ["danceability","energy","loudness","speechiness",
-                               "acousticness","instrumentalness","liveness","valence","tempo"]
-                  if c in df.columns]
-for feat in features_audio:
-    std = df[feat].std()
-    if std > 0:
-        df[f"{feat}_z"] = ((df[feat] - df[feat].mean()) / std).round(4)
+# Vocal vs Instrumental
+if "instrumentalness" in df.columns:
+    df["tipo_faixa"] = np.where(df["instrumentalness"] >= 0.5, "Instrumental", "Vocal")
 
-# ── TRADUÇÃO DAS COLUNAS ──────────────────────────────────
+# Ano dos charts
+if "primeira_data" in df.columns:
+    df["ano_chart"] = pd.to_datetime(df["primeira_data"], errors="coerce").dt.year
+
+# Score dança × energia
+if "danceability" in df.columns and "energy" in df.columns:
+    df["score_danca_energia"] = (df["danceability"] * df["energy"]).round(4)
+
+# ── TRADUÇÃO DAS COLUNAS ─────────────────────────────────
 traducao = {
     "track_id":           "id_musica",
     "track_name":         "nome_musica",
     "artists":            "artistas",
     "album_name":         "album",
     "track_genre":        "genero",
-    "genre":              "genero",
-    "playlist_genre":     "genero",
     "popularity":         "popularidade",
     "duration_ms":        "duracao_ms",
     "duration_min":       "duracao_min",
@@ -200,31 +230,35 @@ traducao = {
     "valence":            "valencia",
     "tempo":              "bpm",
     "time_signature":     "compasso",
+    "streams_total":      "streams_total",
+    "streams_media":      "streams_media",
+    "melhor_posicao":     "melhor_posicao",
+    "aparicoes_chart":    "aparicoes_chart",
+    "paises_chart":       "paises_chart",
+    "chegou_ao_chart":    "chegou_ao_chart",
     "faixa_popularidade": "faixa_popularidade",
+    "faixa_streams":      "faixa_streams",
     "score_danca_energia":"score_danca_energia",
+    "tipo_faixa":         "tipo_faixa",
     "humor":              "humor",
-    "ano_lancamento":     "ano_lancamento",
-    "decada":             "decada",
+    "ano_chart":          "ano_chart",
 }
-
-# Aplica só as que existem
 df.rename(columns={k: v for k, v in traducao.items() if k in df.columns}, inplace=True)
-
-# Remove colunas _z (auxiliares) e outras residuais sem uso
-colunas_z = [c for c in df.columns if c.endswith("_z")]
-df.drop(columns=colunas_z, inplace=True, errors="ignore")
 
 print("Colunas finais:", df.columns.tolist())
 
-# Agregação por gênero (salva auxiliar)
+# Agregação por gênero
 col_genero = "genero" if "genero" in df.columns else None
 if col_genero:
-    agg = df.groupby(col_genero).agg(
-        total_musicas=(col_genero, "count"),
-        popularidade_media=("popularidade", "mean") if "popularidade" in df.columns else (col_genero, "count"),
-        dancabilidade_media=("dancabilidade", "mean") if "dancabilidade" in df.columns else (col_genero, "count"),
-        energia_media=("energia", "mean") if "energia" in df.columns else (col_genero, "count"),
-    ).dropna(axis=1).round(3).sort_values("total_musicas", ascending=False)
+    agg_cols = {"total_musicas": (col_genero, "count")}
+    if "popularidade"    in df.columns: agg_cols["popularidade_media"]  = ("popularidade",    "mean")
+    if "dancabilidade"   in df.columns: agg_cols["dancabilidade_media"] = ("dancabilidade",   "mean")
+    if "energia"         in df.columns: agg_cols["energia_media"]       = ("energia",         "mean")
+    if "streams_total"   in df.columns: agg_cols["streams_total"]       = ("streams_total",   "sum")
+    if "melhor_posicao"  in df.columns: agg_cols["melhor_posicao"]      = ("melhor_posicao",  "min")
+    if "paises_chart"    in df.columns: agg_cols["paises_chart_media"]  = ("paises_chart",    "mean")
+
+    agg = df.groupby(col_genero).agg(**agg_cols).round(3).sort_values("total_musicas", ascending=False)
     agg.to_csv("dados/agg_por_genero.csv")
     print("Salvo: dados/agg_por_genero.csv")
 
@@ -235,43 +269,53 @@ print("\n" + "=" * 60)
 print("ETAPA 5 — Análise Exploratória")
 print("=" * 60)
 
-features_pt = [c for c in ["dancabilidade","energia","volume","fala",
-                             "acustica","instrumental","ao_vivo","valencia","bpm"]
-               if c in df.columns]
-
 fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-fig.suptitle("Análise Exploratória — Spotify Tracks", fontsize=16, fontweight="bold")
+fig.suptitle("Análise Exploratória — Spotify Tracks + Charts", fontsize=16, fontweight="bold")
 
+# 1. Distribuição de popularidade
 if "popularidade" in df.columns:
     df["popularidade"].hist(bins=30, ax=axes[0,0], color="#1DB954", edgecolor="white")
     axes[0,0].set_title("Distribuição de Popularidade")
 
-if "faixa_popularidade" in df.columns:
-    df["faixa_popularidade"].value_counts().plot(kind="bar", ax=axes[0,1],
-        color=["#cfe2f3","#6fa8dc","#1c6ea4","#0b3d91"], edgecolor="white")
-    axes[0,1].set_title("Músicas por Faixa de Popularidade")
+# 2. Músicas que chegaram vs não chegaram aos charts
+if "chegou_ao_chart" in df.columns:
+    df["chegou_ao_chart"].value_counts().rename({True:"No chart", False:"Sem chart"}).plot(
+        kind="bar", ax=axes[0,1], color=["#1DB954","#444"], edgecolor="white")
+    axes[0,1].set_title("Faixas nos Charts vs Fora dos Charts")
     axes[0,1].tick_params(axis="x", rotation=0)
 
-if "dancabilidade" in df.columns and "energia" in df.columns:
-    s = df.sample(min(3000, len(df)), random_state=42)
-    axes[0,2].scatter(s["dancabilidade"], s["energia"], alpha=0.3, s=10, color="#1DB954")
-    axes[0,2].set_title("Dançabilidade × Energia")
+# 3. Streams totais por gênero (top 10)
+if col_genero and "streams_total" in df.columns:
+    top_streams = df.groupby(col_genero)["streams_total"].sum().sort_values(ascending=False).head(10)
+    top_streams.plot(kind="barh", ax=axes[0,2], color="#1DB954")
+    axes[0,2].set_title("Top 10 Gêneros por Streams Totais")
+    axes[0,2].invert_yaxis()
 
-if col_genero:
-    df[col_genero].value_counts().head(10).plot(kind="barh", ax=axes[1,0], color="#1DB954")
-    axes[1,0].set_title("Top 10 Gêneros por Quantidade")
-    axes[1,0].invert_yaxis()
+# 4. Popularidade: músicas nos charts vs fora
+if "chegou_ao_chart" in df.columns and "popularidade" in df.columns:
+    df.boxplot(column="popularidade", by="chegou_ao_chart", ax=axes[1,0],
+               patch_artist=True, boxprops=dict(facecolor="#1DB954", alpha=0.7))
+    axes[1,0].set_title("Popularidade: chart vs sem chart")
+    axes[1,0].set_xlabel("")
+    plt.sca(axes[1,0])
+    plt.title("Popularidade: chart vs sem chart")
 
-if col_genero and "duracao_min" in df.columns:
-    df.groupby(col_genero)["duracao_min"].mean().sort_values(ascending=False).head(8).plot(
-        kind="bar", ax=axes[1,1], color="#0b3d91", edgecolor="white")
-    axes[1,1].set_title("Duração Média por Gênero (min)")
-    axes[1,1].tick_params(axis="x", rotation=45)
+# 5. Humor × streams médios
+if "humor" in df.columns and "streams_total" in df.columns:
+    humor_streams = df[df["streams_total"] > 0].groupby("humor")["streams_total"].median()
+    humor_streams.plot(kind="bar", ax=axes[1,1], color=["#6fa8dc","#6aa84f","#f59e0b"], edgecolor="white")
+    axes[1,1].set_title("Streams Medianos por Humor")
+    axes[1,1].tick_params(axis="x", rotation=0)
 
+# 6. Correlação features de áudio
+features_pt = [c for c in ["dancabilidade","energia","volume","fala",
+                             "acustica","instrumental","ao_vivo","valencia","bpm"]
+               if c in df.columns]
 if len(features_pt) >= 3:
     corr = df[features_pt].corr()
     sns.heatmap(corr, ax=axes[1,2], cmap="RdYlGn", center=0,
-                annot=True, fmt=".1f", annot_kws={"size": 7}, linewidths=0.5, cbar=False)
+                annot=True, fmt=".1f", annot_kws={"size":7},
+                linewidths=0.5, cbar=False)
     axes[1,2].set_title("Correlação entre Features de Áudio")
     axes[1,2].tick_params(axis="x", rotation=45, labelsize=8)
     axes[1,2].tick_params(axis="y", labelsize=8)
@@ -281,33 +325,45 @@ plt.savefig("dados/analise_exploratoria.png", dpi=150, bbox_inches="tight")
 plt.close()
 print("Gráfico salvo: dados/analise_exploratoria.png")
 
-# Insights
+# ── INSIGHTS ──────────────────────────────────────────────
 print("\n" + "=" * 60)
 print("INSIGHTS")
 print("=" * 60)
 
 if "popularidade" in df.columns:
-    pop_media = df["popularidade"].mean()
-    pop_viral = (df["faixa_popularidade"] == "Viral").sum() if "faixa_popularidade" in df.columns else 0
-    print(f"[1] Popularidade média: {pop_media:.1f}/100")
-    print(f"    Músicas virais: {pop_viral:,} ({pop_viral/len(df)*100:.1f}%)")
+    print(f"[1] Popularidade média geral: {df['popularidade'].mean():.1f}/100")
 
-if "dancabilidade" in df.columns and "energia" in df.columns:
-    corr_de = df["dancabilidade"].corr(df["energia"])
-    print(f"[2] Correlação Dançabilidade × Energia: {corr_de:.3f}")
+if "chegou_ao_chart" in df.columns:
+    n_chart = df["chegou_ao_chart"].sum()
+    print(f"[2] Músicas nos charts: {n_chart:,} ({n_chart/len(df)*100:.1f}% do catálogo)")
 
-if col_genero and "popularidade" in df.columns:
-    top = df.groupby(col_genero)["popularidade"].mean().idxmax()
-    print(f"[3] Gênero mais popular: {top}")
+if "chegou_ao_chart" in df.columns and "popularidade" in df.columns:
+    pop_chart     = df[df["chegou_ao_chart"]]["popularidade"].mean()
+    pop_sem_chart = df[~df["chegou_ao_chart"]]["popularidade"].mean()
+    print(f"[3] Popularidade média — no chart: {pop_chart:.1f} | sem chart: {pop_sem_chart:.1f}")
 
-if "duracao_min" in df.columns:
-    print(f"[4] Duração mediana: {df['duracao_min'].median():.2f} min")
+if col_genero and "streams_total" in df.columns:
+    top_genero = df.groupby(col_genero)["streams_total"].sum().idxmax()
+    print(f"[4] Gênero com mais streams: {top_genero}")
 
-if "humor" in df.columns:
-    humor_dist = df["humor"].value_counts(normalize=True).round(3) * 100
-    print(f"[5] Distribuição de humor:\n{humor_dist.to_string()}")
+if "humor" in df.columns and "streams_total" in df.columns:
+    humor_top = df[df["streams_total"] > 0].groupby("humor")["streams_total"].median().idxmax()
+    print(f"[5] Humor com maior mediana de streams: {humor_top}")
 
-# Salva
+if "tipo_faixa" in df.columns and "streams_total" in df.columns:
+    voc  = df[(df["tipo_faixa"] == "Vocal")        & (df["streams_total"] > 0)]["streams_total"].median()
+    inst = df[(df["tipo_faixa"] == "Instrumental") & (df["streams_total"] > 0)]["streams_total"].median()
+    print(f"[6] Streams medianos — Vocal: {voc:,.0f} | Instrumental: {inst:,.0f}")
+
+if "explicito" in df.columns and "streams_total" in df.columns:
+    exp     = df[(df["explicito"] == True)  & (df["streams_total"] > 0)]["streams_total"].median()
+    nao_exp = df[(df["explicito"] == False) & (df["streams_total"] > 0)]["streams_total"].median()
+    print(f"[7] Streams medianos — Explícito: {exp:,.0f} | Não explícito: {nao_exp:,.0f}")
+
+if "paises_chart" in df.columns:
+    print(f"[8] Média de países nos charts por música: {df['paises_chart'].mean():.1f}")
+
+# Salva dataset final
 df.to_csv("dados/spotify_final.csv", index=False)
-print(f"\nDataset final: dados/spotify_final.csv ({len(df):,} registros)")
+print(f"\nDataset final salvo: dados/spotify_final.csv ({len(df):,} registros)")
 print("Pipeline concluído!")
