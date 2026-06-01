@@ -1,1 +1,7 @@
-dados
+dados/
+__pycache__/
+*.pyc
+.idea/
+.venv/
+venv/
+.env
