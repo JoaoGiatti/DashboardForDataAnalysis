@@ -1,0 +1,39 @@
+RESUMO GERAL
+metrica,antes,depois
+Linhas,228000,89741
+Colunas,31,30
+Duplicatas,138259,0
+Total de Nulos,1360582,563645
+
+DETALHE POR COLUNA
+coluna,tipo,nulos_antes,pct_nulos_antes,nulos_depois,pct_nulos_depois,nulos_removidos,tratamento
+track_id,str,0,0.0,0,0.0,0,sem nulos
+artists,str,2,0.0,1,0.0,1,preenchido com Desconhecido
+album_name,str,2,0.0,1,0.0,1,preenchido com Desconhecido
+track_name,str,2,0.0,1,0.0,1,preenchido com Desconhecido
+popularity,int64,0,0.0,0,0.0,0,sem nulos
+duration_ms,int64,0,0.0,0,0.0,0,sem nulos
+explicit,bool,0,0.0,0,0.0,0,sem nulos
+danceability,float64,0,0.0,0,0.0,0,sem nulos
+energy,float64,0,0.0,0,0.0,0,sem nulos
+key,int64,0,0.0,0,0.0,0,sem nulos
+loudness,float64,0,0.0,0,0.0,0,sem nulos
+mode,int64,0,0.0,0,0.0,0,sem nulos
+speechiness,float64,0,0.0,0,0.0,0,sem nulos
+acousticness,float64,0,0.0,0,0.0,0,sem nulos
+instrumentalness,float64,0,0.0,0,0.0,0,sem nulos
+liveness,float64,0,0.0,0,0.0,0,sem nulos
+valence,float64,0,0.0,0,0.0,0,sem nulos
+tempo,float64,0,0.0,0,0.0,0,sem nulos
+time_signature,int64,0,0.0,0,0.0,0,sem nulos
+track_genre,str,0,0.0,0,0.0,0,sem nulos
+streams_total,float64,149012,65.36,61843,68.91,87169,preenchido com mediana
+streams_media,float64,168480,73.89,68898,76.77,99582,preenchido com mediana
+melhor_posicao,float64,149012,65.36,61843,68.91,87169,preenchido com mediana
+aparicoes_chart,float64,149012,65.36,61843,68.91,87169,preenchido com mediana
+paises_chart,float64,149012,65.36,61843,68.91,87169,preenchido com mediana
+primeira_data,str,149012,65.36,61843,68.91,87169,preenchido com Desconhecido
+ultima_data,str,149012,65.36,61843,68.91,87169,preenchido com Desconhecido
+chart_top200,float64,149012,65.36,61843,68.91,87169,preenchido com mediana
+chart_viral50,float64,149012,65.36,61843,68.91,87169,preenchido com mediana
+chegou_ao_chart,bool,0,0.0,0,0.0,0,sem nulos

@@ -130,6 +130,21 @@ print("\n" + "=" * 60)
 print("ETAPA 3 — Limpeza e tratamento")
 print("=" * 60)
 
+# ── SNAPSHOT ANTES ───────────────────────────────────────
+snap_antes = pd.DataFrame({
+    "coluna":            df.columns,
+    "tipo":              df.dtypes.values,
+    "nulos_antes":       df.isnull().sum().values,
+    "pct_nulos_antes":   (df.isnull().mean() * 100).round(2).values,
+})
+resumo_antes = {
+    "linhas":      len(df),
+    "colunas":     df.shape[1],
+    "duplicatas":  df.duplicated(subset=["track_id"]).sum()
+                   if "track_id" in df.columns else df.duplicated().sum(),
+    "total_nulos": int(df.isnull().sum().sum()),
+}
+
 # Remove colunas inúteis
 colunas_remover = [c for c in df.columns if c.startswith("unnamed")]
 df.drop(columns=colunas_remover, inplace=True, errors="ignore")
@@ -156,6 +171,59 @@ if "popularity" in df.columns:
     df = df[(df["popularity"] >= 0) & (df["popularity"] <= 100)]
 
 print(f"Dataset limpo: {len(df):,} registros")
+
+# ── SNAPSHOT DEPOIS ──────────────────────────────────────
+colunas_comuns = [c for c in snap_antes["coluna"] if c in df.columns]
+snap_antes_filtrado = snap_antes[snap_antes["coluna"].isin(colunas_comuns)].copy()
+
+snap_depois = pd.DataFrame({
+    "coluna":             df[colunas_comuns].columns,
+    "nulos_depois":       df[colunas_comuns].isnull().sum().values,
+    "pct_nulos_depois":   (df[colunas_comuns].isnull().mean() * 100).round(2).values,
+})
+
+resumo_depois = {
+    "linhas":      len(df),
+    "colunas":     df.shape[1],
+    "duplicatas":  0,
+    "total_nulos": int(df.isnull().sum().sum()),
+}
+
+# ── RELATÓRIO POR COLUNA ─────────────────────────────────
+relatorio = snap_antes_filtrado.merge(snap_depois, on="coluna")
+relatorio["nulos_removidos"] = relatorio["nulos_antes"] - relatorio["nulos_depois"]
+relatorio["tratamento"] = relatorio.apply(
+    lambda r: "preenchido com mediana" if r["nulos_antes"] > 0 and pd.api.types.is_numeric_dtype(r["tipo"])
+              else ("preenchido com Desconhecido" if r["nulos_antes"] > 0 else "sem nulos"),
+    axis=1
+)
+relatorio = relatorio[["coluna","tipo","nulos_antes","pct_nulos_antes",
+                        "nulos_depois","pct_nulos_depois","nulos_removidos","tratamento"]]
+
+# ── RESUMO GERAL ─────────────────────────────────────────
+resumo = pd.DataFrame([
+    {"metrica": "Linhas",         "antes": resumo_antes["linhas"],      "depois": resumo_depois["linhas"]},
+    {"metrica": "Colunas",        "antes": resumo_antes["colunas"],     "depois": resumo_depois["colunas"]},
+    {"metrica": "Duplicatas",     "antes": resumo_antes["duplicatas"],  "depois": resumo_depois["duplicatas"]},
+    {"metrica": "Total de Nulos", "antes": resumo_antes["total_nulos"], "depois": resumo_depois["total_nulos"]},
+])
+
+# ── SALVA CSV ─────────────────────────────────────────────
+os.makedirs("dados", exist_ok=True)
+with open("dados/relatorio_tratamento.csv", "w", encoding="utf-8") as f:
+    f.write("RESUMO GERAL\n")
+    resumo.to_csv(f, index=False)
+    f.write("\nDETALHE POR COLUNA\n")
+    relatorio.to_csv(f, index=False)
+
+print("Relatório salvo: dados/relatorio_tratamento.csv")
+
+# ── PRINT NO TERMINAL ────────────────────────────────────
+print("\n── Resumo do Tratamento ──────────────────────────────")
+print(resumo.to_string(index=False))
+print("\n── Colunas com nulos tratados ───────────────────────")
+tratadas = relatorio[relatorio["nulos_antes"] > 0][["coluna","nulos_antes","nulos_depois","tratamento"]]
+print(tratadas.to_string(index=False) if len(tratadas) > 0 else "  Nenhuma coluna com nulos.")
 
 # ─────────────────────────────────────────────────────────
 # 4. TRANSFORMAÇÃO E NOVAS VARIÁVEIS
