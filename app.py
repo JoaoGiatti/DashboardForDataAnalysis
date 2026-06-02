@@ -1,9 +1,3 @@
-"""
-app.py — Ponto de entrada do dashboard Spotify.
-Execute: python app.py
-Acesse:  http://localhost:8050
-"""
-
 import dash
 from dash import html, dcc
 from utils import (

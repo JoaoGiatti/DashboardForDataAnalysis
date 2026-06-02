@@ -1,8 +1,3 @@
-"""
-utils.py — Paleta, helpers de layout, carregamento do df e figuras pré-computadas.
-Importado por todas as páginas.
-"""
-
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go

@@ -54,12 +54,6 @@ layout = html.Div([
             dcc.Dropdown(id="f-chart", options=opcoes_chart, value="Todos",
                          clearable=False, style=dropdown_style),
         ], style={"marginBottom":"14px"}),
-        html.Div([
-            label_filtro("📊 Pop. Mínima"),
-            dcc.Slider(id="slider-pop", min=0, max=100, step=5, value=0,
-                       marks={0:"0",50:"50",100:"100"},
-                       tooltip={"placement":"right","always_visible":False}),
-        ], style={"marginBottom":"20px"}),
         html.Div(style={"borderTop":f"1px solid {BORDA}","margin":"8px 0 16px"}),
         html.Div("EIXOS", style={"fontSize":"9px","color":"#444","letterSpacing":"0.12em",
                                  "marginBottom":"12px","fontWeight":"700"}),
@@ -122,11 +116,10 @@ layout = html.Div([
     Input("f-pop",      "value"),
     Input("f-humor",    "value"),
     Input("f-chart",    "value"),
-    Input("slider-pop", "value"),
     Input("f-feat-x",   "value"),
     Input("f-feat-y",   "value"),
 )
-def atualizar(genero, pop_faixa, humor, chart_filtro, pop_min, feat_x, feat_y):
+def atualizar(genero, pop_faixa, humor, chart_filtro, feat_x, feat_y):
     dff = df.copy()
     if genero and genero != "Todos" and col_genero:
         dff = dff[dff[col_genero] == genero]
@@ -138,8 +131,6 @@ def atualizar(genero, pop_faixa, humor, chart_filtro, pop_min, feat_x, feat_y):
         dff = dff[dff[col_chart] == True]
     elif chart_filtro == "nao" and col_chart:
         dff = dff[dff[col_chart] == False]
-    if col_pop in dff.columns:
-        dff = dff[dff[col_pop] >= pop_min]
 
     n = len(dff)
     contagem = [
