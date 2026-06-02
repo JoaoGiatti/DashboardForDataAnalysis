@@ -2,7 +2,7 @@ import dash
 from dash import html, dcc
 from utils import (
     card, insight_card, titulo_pagina,
-    fig_gen_qty, fig_gen_streams, fig_bpm,
+    fig_pop_genero, fig_gen_streams, fig_bpm,
     top_stream_gen,
     VERDE, LARANJA, ROXO, CINZA_CLR,
 )
@@ -14,9 +14,9 @@ layout = html.Div([
 
     html.Div([
         card([
-            html.Div("Quantidade de Faixas",
+            html.Div("Popularidade Média",
                      style={"fontSize":"12px","color":CINZA_CLR,"marginBottom":"12px","fontWeight":"600"}),
-            dcc.Graph(figure=fig_gen_qty, config={"displayModeBar":False}, style={"height":"320px"}),
+            dcc.Graph(figure=fig_pop_genero, config={"displayModeBar":False}, style={"height":"320px"}),
         ], {"flex":"1","minWidth":"280px"}),
         card([
             html.Div("Streams Totais (Milhões)",
@@ -40,10 +40,10 @@ layout = html.Div([
             "enquanto jazz, soul e acoustic ficam nas faixas mais lentas — "
             "refletindo diretamente o público-alvo de cada estilo.",
             LARANJA),
-        insight_card("📊 Quantidade ≠ Streams",
-            "Um gênero com muitas faixas no catálogo não necessariamente "
-            "tem mais streams — o volume de reproduções depende mais da popularidade "
-            "individual das músicas do que da quantidade de títulos.",
+        insight_card("⭐ Popularidade ≠ Volume",
+            "Um gênero pode ter popularidade média alta sem liderar em streams totais — "
+            "o que indica faixas individualmente bem avaliadas, mas sem o alcance massivo "
+            "de gêneros como pop e hip-hop.",
             ROXO),
     ], style={"display":"flex","gap":"14px","flexWrap":"wrap"}),
 

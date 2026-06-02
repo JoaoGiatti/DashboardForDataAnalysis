@@ -2,10 +2,10 @@ import dash
 from dash import html, dcc
 from utils import (
     card, insight_card, titulo_pagina,
-    fig_exp, fig_humor, fig_scatter_main,
+    fig_exp, fig_humor, fig_scatter_main, fig_top_musicas,
     exp_sim, exp_nao, humor_top,
     pop_chart_val, pop_noch_val, col_chart,
-    VERDE, LARANJA, ROSA, CINZA_CLR,
+    VERDE, LARANJA, ROSA, AZUL, CINZA_CLR,
 )
 
 dash.register_page(__name__, path="/performance", name="🏆 Charts & Sucesso", order=1)
@@ -30,6 +30,13 @@ layout = html.Div([
             dcc.Graph(figure=fig_scatter_main, config={"displayModeBar":False}, style={"height":"300px"}),
         ], {"flex":"2","minWidth":"340px"}),
     ], style={"display":"flex","gap":"14px","marginBottom":"14px"}),
+
+    # top músicas
+    card([
+        html.Div("Top 15 Músicas por Streams",
+                 style={"fontSize":"12px","color":CINZA_CLR,"marginBottom":"12px","fontWeight":"600"}),
+        dcc.Graph(figure=fig_top_musicas, config={"displayModeBar":False}, style={"height":"420px"}),
+    ], {"marginBottom":"14px"}),
 
     html.Div([
         insight_card("🔞 Conteúdo Explícito Performa Melhor",

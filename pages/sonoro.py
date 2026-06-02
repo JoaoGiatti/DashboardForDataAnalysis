@@ -2,8 +2,9 @@ import dash
 from dash import html, dcc
 from utils import (
     card, insight_card, titulo_pagina,
-    fig_radar, fig_heat, fig_box_humor,
-    VERDE, LARANJA, ROSA, CINZA_CLR, BORDA,
+    fig_radar, fig_heat, fig_box_humor, fig_dance_energia,
+    corr_de,
+    VERDE, LARANJA, ROSA, AZUL, CINZA_CLR, BORDA,
 )
 
 dash.register_page(__name__, path="/sonoro", name="🎛️ Perfil Sonoro", order=3)
@@ -36,23 +37,36 @@ layout = html.Div([
                      style={"fontSize":"10px","color":"#555","marginBottom":"12px"}),
             dcc.Graph(figure=fig_box_humor, config={"displayModeBar":False}, style={"height":"260px"}),
         ], {"flex":"1","minWidth":"280px"}),
-        html.Div([
-            insight_card("🎯 Hits são mais dançantes e enérgicos",
-                "Músicas que chegaram ao chart têm dançabilidade e energia médias "
-                "visivelmente maiores que as que ficaram fora — confirma que ritmo "
-                "e intensidade são características-chave de um hit no Spotify.",
-                VERDE),
-            insight_card("🔴 Energia × Acústica: opostos",
-                "A correlação de -0.73 entre energia e acústica é a mais forte do catálogo. "
-                "Músicas acústicas são quase sempre de baixa energia — "
-                "e o heatmap deixa isso visível em vermelho.",
-                ROSA),
-            insight_card("😊 Alegria e dança andam juntas",
-                "Faixas classificadas como 'Alegre' têm a maior mediana de dançabilidade. "
-                "Músicas melancólicas apresentam maior variação — "
-                "algumas são dançantes, outras não.",
-                LARANJA),
-        ], style={"flex":"1","minWidth":"280px","display":"flex","flexDirection":"column","gap":"12px"}),
-    ], style={"display":"flex","gap":"14px"}),
+        card([
+            html.Div("Dançabilidade × Energia",
+                     style={"fontSize":"12px","color":CINZA_CLR,"marginBottom":"4px","fontWeight":"600"}),
+            html.Div("Distribuição das faixas no espaço dança/energia, colorido por humor",
+                     style={"fontSize":"10px","color":"#555","marginBottom":"12px"}),
+            dcc.Graph(figure=fig_dance_energia, config={"displayModeBar":False}, style={"height":"260px"}),
+        ], {"flex":"2","minWidth":"340px"}),
+    ], style={"display":"flex","gap":"14px","marginBottom":"14px"}),
+
+    html.Div([
+        insight_card("🎯 Hits são mais dançantes e enérgicos",
+            "Músicas que chegaram ao chart têm dançabilidade e energia médias "
+            "visivelmente maiores que as que ficaram fora — confirma que ritmo "
+            "e intensidade são características-chave de um hit no Spotify.",
+            VERDE),
+        insight_card("🔴 Energia × Acústica: opostos",
+            "A correlação de -0.73 entre energia e acústica é a mais forte do catálogo. "
+            "Músicas acústicas são quase sempre de baixa energia — "
+            "e o heatmap deixa isso visível em vermelho.",
+            ROSA),
+        insight_card("😊 Alegria e dança andam juntas",
+            "Faixas classificadas como 'Alegre' têm a maior mediana de dançabilidade. "
+            "Músicas melancólicas apresentam maior variação — "
+            "algumas são dançantes, outras não.",
+            LARANJA),
+        insight_card("⚡ Dança e energia: correlação moderada",
+            f"A correlação entre dançabilidade e energia é de {corr_de:.2f} — positiva, "
+            "mas longe de perfeita. Existem músicas muito dançantes com energia moderada "
+            "(como certos R&B e soul) e músicas energéticas pouco dançantes (metal, por exemplo).",
+            AZUL),
+    ], style={"display":"flex","gap":"14px","flexWrap":"wrap"}),
 
 ], style={"padding":"28px"})

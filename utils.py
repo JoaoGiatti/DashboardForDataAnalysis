@@ -19,6 +19,8 @@ col_fala      = "fala"               if "fala"               in df.columns else 
 col_aovivo    = "ao_vivo"            if "ao_vivo"            in df.columns else "liveness"
 col_bpm       = "bpm"                if "bpm"                in df.columns else "tempo"
 col_instr     = "instrumental"       if "instrumental"       in df.columns else "instrumentalness"
+col_nome      = "nome_musica"         if "nome_musica"         in df.columns else "track_name"
+col_artista   = "artistas"            if "artistas"            in df.columns else "artists"
 col_faixa     = "faixa_popularidade" if "faixa_popularidade" in df.columns else None
 col_humor     = "humor"              if "humor"              in df.columns else None
 col_streams   = "streams_total"      if "streams_total"      in df.columns else None
@@ -407,20 +409,25 @@ if col_humor and col_dance and col_dance in df.columns:
 else:
     fig_box_humor = go.Figure()
 
-# [I] Barras — top 10 gêneros por quantidade
-if col_genero:
-    top10_qty = df[col_genero].value_counts().head(10).sort_values()
-    fig_gen_qty = go.Figure(go.Bar(
-        x=top10_qty.values, y=top10_qty.index, orientation="h",
-        marker_color=[f"rgba(139,92,246,{0.4+i*0.06:.2f})" for i in range(len(top10_qty))],
+# [I] Barras — popularidade média por gênero (top 10)
+if col_genero and col_pop in df.columns:
+    pop_gen = (df.groupby(col_genero)[col_pop].mean()
+               .sort_values(ascending=False).head(10).sort_values())
+    fig_pop_genero = go.Figure(go.Bar(
+        x=pop_gen.values, y=pop_gen.index, orientation="h",
+        marker_color=[f"rgba(139,92,246,{0.4+i*0.06:.2f})" for i in range(len(pop_gen))],
         marker_line_color=ROXO, marker_line_width=0.8,
-        text=top10_qty.values, textposition="outside",
+        text=[f"{v:.1f}" for v in pop_gen.values],
+        textposition="outside",
         textfont=dict(color=CINZA_CLR, size=10),
+        hovertemplate="<b>%{y}</b><br>Popularidade média: %{x:.1f}<extra></extra>",
     ))
-    base_fig(fig_gen_qty, "Top 10 Gêneros — Quantidade de Faixas")
-    fig_gen_qty.update_layout(xaxis_title="Faixas", margin=dict(r=20))
+    base_fig(fig_pop_genero, "Top 10 Gêneros — Popularidade Média")
+    fig_pop_genero.update_layout(xaxis_title="Popularidade Média (0–100)", margin=dict(r=20))
 else:
-    fig_gen_qty = go.Figure()
+    fig_pop_genero = go.Figure()
+
+fig_gen_qty = fig_pop_genero
 
 # [J] Linha temporal streams por ano
 if col_anochart and col_anochart in df.columns and col_streams and col_streams in df.columns:
@@ -457,3 +464,62 @@ if col_genero and col_bpm in df.columns:
     fig_bpm.update_layout(xaxis_title="BPM Médio", margin=dict(r=20))
 else:
     fig_bpm = go.Figure()
+
+# [L] Barras horizontais — top 15 músicas por streams
+col_nome_real    = col_nome    if col_nome    in df.columns else None
+col_artista_real = col_artista if col_artista in df.columns else None
+
+if col_streams and col_streams in df.columns and col_nome_real:
+    top_musicas = (
+        df[df[col_streams] > 0]
+        .sort_values(col_streams, ascending=False)
+        .drop_duplicates(subset=[col_nome_real])
+        .head(15)
+    )
+    nomes_label = (
+        top_musicas[col_nome_real].str[:30] + " — " + top_musicas[col_artista_real].str[:20]
+        if col_artista_real and col_artista_real in df.columns
+        else top_musicas[col_nome_real].str[:40]
+    )
+    vals = top_musicas[col_streams].values / 1e6
+    fig_top_musicas = go.Figure(go.Bar(
+        x=vals, y=nomes_label.values, orientation="h",
+        marker_color=[f"rgba(29,185,84,{0.35+i*0.043:.2f})" for i in range(len(vals))],
+        marker_line_color=VERDE, marker_line_width=0.6,
+        text=[f"{v:.0f}M" for v in vals],
+        textposition="outside", textfont=dict(color=CINZA_CLR, size=10),
+        hovertemplate="<b>%{y}</b><br>Streams: %{x:.0f}M<extra></extra>",
+    ))
+    base_fig(fig_top_musicas, "Top 15 Músicas por Streams")
+    fig_top_musicas.update_layout(
+        xaxis_title="Streams (M)",
+        yaxis=dict(autorange="reversed", color=CINZA_CLR, tickfont=dict(size=9)),
+        margin=dict(r=60, l=10),
+        height=420,
+    )
+else:
+    fig_top_musicas = go.Figure()
+
+# [M] Scatter — dançabilidade × energia colorido por humor
+if col_dance in df.columns and col_energia in df.columns:
+    samp_de = df.sample(min(4000, len(df)), random_state=7)
+    cor_de  = col_humor if col_humor and col_humor in samp_de.columns else None
+    cores_de = {"Melancólico": AZUL, "Neutro": LARANJA, "Alegre": VERDE}
+    fig_dance_energia = px.scatter(
+        samp_de, x=col_dance, y=col_energia,
+        color=cor_de,
+        color_discrete_map=cores_de if cor_de else None,
+        color_discrete_sequence=[VERDE],
+        opacity=0.45,
+        labels={col_dance: "Dançabilidade", col_energia: "Energia", col_humor: "Humor"},
+        hover_data={
+            col_nome_real:    True  if col_nome_real    and col_nome_real    in samp_de.columns else False,
+            col_artista_real: True  if col_artista_real and col_artista_real in samp_de.columns else False,
+            col_dance:        ":.2f",
+            col_energia:      ":.2f",
+        } if col_nome_real else None,
+    )
+    base_fig(fig_dance_energia, "Dançabilidade × Energia")
+    fig_dance_energia.update_layout(showlegend=True)
+else:
+    fig_dance_energia = go.Figure()

@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, Input, Output, State, callback
+from dash import html, dcc, Input, Output, callback
 import plotly.graph_objects as go
 import plotly.express as px
 from utils import (
@@ -7,6 +7,7 @@ from utils import (
     opcoes_genero, opcoes_pop, opcoes_humor, opcoes_chart, opcoes_features,
     features_audio, nomes_audio,
     col_genero, col_pop, col_humor, col_chart, col_faixa, col_streams,
+    col_nome, col_artista,
     VERDE, AZUL, LARANJA, ROSA, CINZA_CLR, BORDA, BRANCO, CINZA_MD, SIDEBAR_BG,
 )
 
@@ -92,11 +93,11 @@ layout = html.Div([
                          style={"flex":"2","minWidth":"240px"}),
             ], style={"display":"flex","gap":"14px","marginBottom":"14px"}),
             html.Div([
-                html.Div(card(dcc.Graph(id="g-box",  config={"displayModeBar":False}, style={"height":"300px"})),
+                html.Div(card(dcc.Graph(id="g-box",   config={"displayModeBar":False}, style={"height":"300px"})),
                          style={"flex":"2","minWidth":"280px"}),
-                html.Div(card(dcc.Graph(id="g-bar2", config={"displayModeBar":False}, style={"height":"300px"})),
+                html.Div(card(dcc.Graph(id="g-bar2",  config={"displayModeBar":False}, style={"height":"300px"})),
                          style={"flex":"2","minWidth":"280px"}),
-                html.Div(card(dcc.Graph(id="g-heat2",config={"displayModeBar":False}, style={"height":"300px"})),
+                html.Div(card(dcc.Graph(id="g-heat2", config={"displayModeBar":False}, style={"height":"300px"})),
                          style={"flex":"1","minWidth":"260px"}),
             ], style={"display":"flex","gap":"14px"}),
         ], style={"padding":"16px 24px 24px"}),
@@ -138,22 +139,55 @@ def atualizar(genero, pop_faixa, humor, chart_filtro, feat_x, feat_y):
         html.Div("faixas selecionadas", style={"fontSize":"10px","color":"#555"}),
     ]
 
-    # Scatter
+    # scatter com hover de nome + artista
     if feat_x and feat_y and feat_x in dff.columns and feat_y in dff.columns and n > 0:
-        samp = dff.sample(min(3000, n), random_state=42)
+        samp     = dff.sample(min(3000, n), random_state=42)
         cor_col2 = col_humor if col_humor and col_humor in samp.columns else None
         cores_h  = {"Melancólico":AZUL,"Neutro":LARANJA,"Alegre":VERDE}
-        nome_x = next((o["label"] for o in opcoes_features if o["value"]==feat_x), feat_x)
-        nome_y = next((o["label"] for o in opcoes_features if o["value"]==feat_y), feat_y)
-        fig_sc = px.scatter(samp, x=feat_x, y=feat_y, color=cor_col2,
-                            color_discrete_map=cores_h if cor_col2 else None,
-                            color_discrete_sequence=[VERDE], opacity=0.5,
-                            labels={feat_x:nome_x, feat_y:nome_y})
+        nome_x   = next((o["label"] for o in opcoes_features if o["value"]==feat_x), feat_x)
+        nome_y   = next((o["label"] for o in opcoes_features if o["value"]==feat_y), feat_y)
+
+        tem_nome    = col_nome    in samp.columns
+        tem_artista = col_artista in samp.columns
+
+        hover_extra = {}
+        if tem_nome:    hover_extra[col_nome]    = True
+        if tem_artista: hover_extra[col_artista] = True
+        hover_extra[feat_x] = ":.3f"
+        hover_extra[feat_y] = ":.3f"
+
+        fig_sc = px.scatter(
+            samp, x=feat_x, y=feat_y,
+            color=cor_col2,
+            color_discrete_map=cores_h if cor_col2 else None,
+            color_discrete_sequence=[VERDE],
+            opacity=0.5,
+            labels={feat_x:nome_x, feat_y:nome_y},
+            hover_data=hover_extra,
+        )
+
+        # monta hovertemplate customizado se tiver nome/artista
+        if tem_nome or tem_artista:
+            linha_titulo = ""
+            if tem_nome and tem_artista:
+                linha_titulo = f"<b>%{{customdata[0]}}</b> — %{{customdata[1]}}<br>"
+            elif tem_nome:
+                linha_titulo = f"<b>%{{customdata[0]}}</b><br>"
+
+            fig_sc.update_traces(
+                hovertemplate=(
+                    linha_titulo
+                    + f"{nome_x}: %{{x:.3f}}<br>"
+                    + f"{nome_y}: %{{y:.3f}}"
+                    + "<extra></extra>"
+                )
+            )
+
         bl(fig_sc, f"{nome_x} × {nome_y}")
     else:
         fig_sc = empty_fig()
 
-    # Histograma
+    # histograma
     if col_pop in dff.columns and n > 0:
         fig_hi = px.histogram(dff, x=col_pop, nbins=25,
                               color_discrete_sequence=[VERDE],
@@ -164,7 +198,7 @@ def atualizar(genero, pop_faixa, humor, chart_filtro, feat_x, feat_y):
     else:
         fig_hi = empty_fig()
 
-    # Boxplot
+    # boxplot
     if col_genero and feat_x and feat_x in dff.columns and n > 0:
         top8  = dff[col_genero].value_counts().head(8).index
         dff_b = dff[dff[col_genero].isin(top8)]
@@ -177,7 +211,7 @@ def atualizar(genero, pop_faixa, humor, chart_filtro, feat_x, feat_y):
     else:
         fig_bx = empty_fig()
 
-    # Barras gênero
+    # barras gênero
     if col_genero and n > 0:
         top12 = dff[col_genero].value_counts().head(12).reset_index()
         top12.columns = ["genero","total"]
@@ -191,11 +225,11 @@ def atualizar(genero, pop_faixa, humor, chart_filtro, feat_x, feat_y):
     else:
         fig_br = empty_fig()
 
-    # Heatmap
+    # heatmap
     feats_d = [f for f in features_audio if f in dff.columns]
     if len(feats_d) >= 3 and n > 0:
-        labs   = [nomes_audio.get(f,f) for f in feats_d]
-        corr2  = dff[feats_d].corr().round(2)
+        labs  = [nomes_audio.get(f,f) for f in feats_d]
+        corr2 = dff[feats_d].corr().round(2)
         fig_ht = go.Figure(go.Heatmap(
             z=corr2.values, x=labs, y=labs,
             colorscale="RdYlGn", zmid=0,
